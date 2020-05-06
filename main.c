@@ -217,7 +217,7 @@ void calculateHist(PBITMAP bitmap) {
     displayHist(blue);
 }
 
-PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader, bool* hasMiscellaneous) {
+PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader, bool* hasMiscellaneous, bool* histEligible) {
     FILE* file;
     BITMAPINFO bmInfo; // InfoHeader + colors;
     PBITMAP bitmap; // bmInfo + miscellaneous (if present) + pixels;
@@ -234,7 +234,6 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
     // Check if file is bitmap --> bfType == 0x4D42;
     if (bitmapFileHeader->bfType != 0x4D42) {
         fclose(file);
-
         printf("File is not type of BMP file!\n");
         return NULL;
     }
@@ -261,14 +260,24 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
             bmInfo.bmInfoHeader.biClrImportant != 0
         )
     ) {
-        fclose(file);
-
-        printf("Not supported bitmap file!\n");
-        return NULL;
+        *histEligible = false;
+        printf("File is not eligible for histogram!\n");
     }
 
     // Check if miscellaneous data is present between headers and pixel array;
     long bytesLeft = (long)bitmapFileHeader->bfOffBits - (long)(sizeof(bmInfo) + sizeof(*bitmapFileHeader));
+
+    if (bytesLeft == -4 && !RGBQExists) {
+        // RGBQuad does not exist;
+        bytesLeft = 1; // Placeholder;
+    }
+    else if (bytesLeft < 0) {
+        // Fatal error, should not occur in any case;
+        fclose(file);
+        printf("Unknown error - cannot process the file! \n");
+        return NULL;
+    }
+
     unsigned char* miscellaneous = calloc((size_t) bytesLeft, sizeof(BYTE));
 
     if (bytesLeft == 0 || !RGBQExists) {
@@ -280,19 +289,11 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
         // First check if space allocated correctly;
         if (!miscellaneous) {
             printf("Error while allocating pixelArray memory!\n");
-            free(miscellaneous); // Needed?;
             fclose(file);
             return NULL;
         }
 
         fread(miscellaneous, sizeof(BYTE), (size_t)bytesLeft, file);
-    }
-    else {
-        // Shouldnt occur - unknown error (unsupported bitmap type???);
-        free(miscellaneous);
-        fclose(file);
-        printf("Unknown error - cannot process the file! \n");
-        return NULL;
     }
 
     // Go to pixel array, allocate space needed, read data and check for errors;
@@ -308,7 +309,6 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
 
     if (!bitmapData) {
         printf("Error while allocating pixelArray memory!\n");
-        free(bitmapData); // Needed?;
         fclose(file);
         return NULL;
     }
@@ -340,7 +340,6 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
 
     if (bitmap == NULL) {
         printf("Error while allocating bitmap memory!\n");
-        free(bitmap);
         return NULL;
     }
 
@@ -354,19 +353,26 @@ PBITMAP loadBitmapData(const char* filename, BITMAPFILEHEADER* bitmapFileHeader,
 void parseBMP(const char* filename, const char* output) {
     BITMAPFILEHEADER bitmapFileHeader;
     bool hasMiscellaneous = false;
-    PBITMAP bitmap = loadBitmapData(filename, &bitmapFileHeader, &hasMiscellaneous);
+    bool histEligible = true;
+    PBITMAP bitmap = loadBitmapData(filename, &bitmapFileHeader, &hasMiscellaneous, &histEligible);
     if (bitmap == NULL)
         return;
 
     printf("----\n%s:\n----", filename);
     printFileHeader(bitmapFileHeader);
     printInfoHeader(bitmap->bmInfo.bmInfoHeader);
-    calculateHist(bitmap);
+    if (histEligible)
+        calculateHist(bitmap);
 
     if (output != NULL) {
         changeToGreyscale(bitmap);
         saveBitMap(output, bitmap, bitmapFileHeader, hasMiscellaneous);
     }
+
+    free(bitmap);
+    if (hasMiscellaneous)
+        free(bitmap->miscellaneous);
+    free(bitmap->biData);
 }
 
 int main(int argc, const char* argv[])
