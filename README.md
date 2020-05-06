@@ -1,2 +1,2 @@
-Simple BMP-file parser printing headers' info and histogram of colors.\n
+Simple BMP-file parser printing headers' info and histogram of colors.<br/>
 Adding additional filename (output name) makes program generate (not efficient way) grayscale image of input (first parameter) image.
