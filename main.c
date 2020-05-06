@@ -384,6 +384,7 @@ int main(int argc, const char* argv[])
 
     for (int i = 1; i < argc; i += 2)
     {
+        // input (required) and output (optional) files
         parseBMP(argv[i], (i + 1 < argc) ? argv[i + 1] : NULL);
     }
     return 0;
